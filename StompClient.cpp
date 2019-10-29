@@ -4,11 +4,26 @@
 #include <sstream>
 using std::string;
 
+// We use this method to remove '\r' from the end of strings
+// since we are splitting on '\n' and the '\r' is optional.
+static inline void rtrim( std::string & s)
+{
+  s.erase( std::find_if( s.rbegin(), s.rend(), [](int ch)
+			 {
+			   return !std::isspace( ch );
+			 }).base(), s.end() );
+}
 
 // This is the error callback for right now
 void fail( beast::error_code ec, char const* module )
 {
   std::cerr << module << ": " << ec.message() << std::endl;
+}
+
+
+void StompClient::setMessageHandler( void (*handler)(string body) )
+{
+  messageHandler = handler;
 }
 
 void StompClient::onRead( char const *message )
@@ -18,12 +33,20 @@ void StompClient::onRead( char const *message )
   std::string messageText = message;
   std::istringstream messageStream( messageText );
   std::string messageType;
+
+  // Note that the std::getline method used here will leave any '\r'
+  // intact at the end of the line, so ...
   std::getline( messageStream, messageType );
 
+  // ... we have to remove them here.
+  rtrim( messageType );
+  //std::cout << "Message type is " << messageType << "|" << std:: endl;
+  
   std::string header;
   std::map<string,string> headers;
   while( std::getline( messageStream, header ) )
   {
+    rtrim( header );
     if( header.length() == 0 )
     {
       break;
@@ -39,7 +62,8 @@ void StompClient::onRead( char const *message )
   // Get the body, if any
   std::string body;
   std::getline( messageStream, body );
-
+  rtrim( body );
+ 
   if( messageType == "CONNECTED" )
   {
     //std::cout << "Connected!" << std::endl;
@@ -48,6 +72,12 @@ void StompClient::onRead( char const *message )
   {
     std::cout << "Received Message: " << body << std::endl;
     
+    // Invoke the message handler, if any.
+    if( messageHandler != NULL )
+    {
+      messageHandler( body );
+    }
+     
     // Release the thread lock
     std::unique_lock<std::mutex> locker( g_message );
     g_messagecheck.notify_one();
@@ -58,7 +88,7 @@ void StompClient::onRead( char const *message )
   }
   else if( messageType == "RECEIPT" )
   {
-    //std::cout << "Received receipt for " << headers[ "receipt-id" ] << std::endl;
+    std::cout << "Received receipt for " << headers[ "receipt-id" ] << std::endl;
 							      
     // Release the thread lock
     std::unique_lock<std::mutex> locker( g_receipt );
@@ -67,10 +97,15 @@ void StompClient::onRead( char const *message )
   
 }
 
+// This is what we use for the "End-of-Line" character. Note that the '\r' is
+// optional, but that if it is used, it must come before the '\n'.
 const char* StompClient::EOL = "\r\n";
 
 void StompClient::connect( const char* host, const char *port, const char* path, const char *login, const char *passcode )
 {
+  // This is a new connection so set the message handler to NULL.
+  messageHandler = NULL;
+  
   // Create the WebSocket session
   ioc = new net::io_context();
   
@@ -83,6 +118,7 @@ void StompClient::connect( const char* host, const char *port, const char* path,
   auto iocRunner = []( net::io_context *ioc )
   {
     ioc->run();
+    std::cout << "IOCRunner: exiting" << std::endl;
   };
 
   iocRunnerThread = new std::thread( iocRunner, ioc );
@@ -111,7 +147,7 @@ void StompClient::subscribe( int id, char const *destination, char const* ack )
 
 void StompClient::unsubscribe( int id )
 {
-  //std::cout << "Unsubscribing from id " << id << std::endl;
+  std::cout << "Unsubscribing from id " << id << std::endl;
   std::string unsubscribeFrame = makeUnsubscribeFrame( id );
 
   // Send the unsubscribe frame
@@ -138,7 +174,7 @@ void StompClient::disconnect( int receipt )
 // Close the WebSocket
 void StompClient::close()
 {
-  //std::cout << "Closing WebSocket" << std::endl;
+  std::cout << "Closing WebSocket" << std::endl;
   currentSession->close();
 }
 

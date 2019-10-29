@@ -21,6 +21,9 @@ class StompClient : public websocketcallbacks
   void synchronizeReceipt();
   void synchronize();
 
+  // Set the message handlers
+  void setMessageHandler( void (*handler)(string body) );
+  
   // Callbacks
   void onRead( char const* message );
 
@@ -43,6 +46,7 @@ class StompClient : public websocketcallbacks
   std::shared_ptr<session> currentSession;
   std::thread     *iocRunnerThread;
   net::io_context *ioc;
+  void (*messageHandler)( string str );
 };
 
 

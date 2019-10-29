@@ -156,7 +156,7 @@ void session::on_close( beast::error_code ec )
 // External APIs
 void session::send( char const* newText )
 {
-  //std::cout << "Writing new text:\n" << std::string( newText ) << std::endl;
+  std::cout << "Writing new text:\n" << std::string( newText ) << std::endl;
 
   // Add the '\0' to end the frame.  
   std::string textToSend( newText );
@@ -173,6 +173,7 @@ void session::send( char const* newText )
 
 void session::close()
 {
+  std::cout << "WebSocketSession: closing WebSocket" << std:: endl;
   ws_.async_close( websocket::close_code::normal, beast::bind_front_handler( &session::on_close, shared_from_this() ) );
 }
     
